@@ -1,0 +1,97 @@
+#!/bin/bash
+#===================================
+# http://netkiller.sourceforge.net/
+#===================================
+BACKUP_DIR=~/backup
+UPLOAD_DIR=~
+
+deploy(){
+
+    local SERVER_ID=$1
+    local FILEDIR=$UPLOAD_DIR/$2
+    #local filelist=$(find $FILEDIR -type f | sed -e "s:^$FILEDIR:/:g" | tr "\n" " ")
+    #local filelist=$(find $FILEDIR -type f | sed -e "s:^$FILEDIR:/:g")
+    cd ~
+    local TIMEPOINT=$(date '+%Y-%m-%d@%H:%M:%S')
+    mkdir $BACKUP_DIR/$SERVER_ID/$TIMEPOINT
+    cd $BACKUP_DIR/$SERVER_ID/$TIMEPOINT
+    
+    for dir in $(find $FILEDIR -type d | sed -e "s:^$FILEDIR::g")
+    do 
+        mkdir -p $dir
+    done
+        
+    #echo $filelist > $BACKUP_DIR/$TIMEPOINT/file.lst
+    echo ===== backup timepont $TIMEPOINT =====
+
+    for file in $(find $FILEDIR -type f | sed -e "s:^$FILEDIR:/:g")
+    do
+        local lfile=$(echo $file | sed "s:^/::g")
+        echo "get -z $file $lfile"
+    done | ncftp $SERVER_ID
+
+    #echo "get $filelist" | ncftp $SERVER_ID
+    #echo "I have finished backup files, I will be uploading files to $SERVER_ID" 
+    read -p "Are you ready? [y/n]" -n 1 key
+    echo
+    if [ $key = 'y' ]; then
+        echo ===== upload =====
+        echo "put -R $FILEDIR*" | ncftp $SERVER_ID
+    fi
+    cd ~
+    echo
+}
+
+function withdraw(){
+    local SERVER_ID=$1
+    local TIMEPOINT=$2
+    cd $BACKUP_DIR/$SERVER_ID/$TIMEPOINT
+    #local filelist=$(find  -type f | sed -e "s/^\.//g" | tr "\n" " ")
+    echo "put -R $BACKUP_DIR/$SERVER_ID/$TIMEPOINT/*" | ncftp $SERVER_ID
+    cd ~
+}
+
+usage(){
+    echo $"Usage: $0 {deploy|withdraw|history} <server-id> <directory/timepoint>"
+    exit 1
+}
+
+
+case "$1" in
+    deploy)
+        if [ -z $2 ]; then
+            usage
+            exit
+        fi
+        if [ -z $3 ]; then
+            usage
+            exit
+        fi
+
+		if [ $# -ne 2 ] ; then
+				usage
+				exit 2
+		fi
+    
+        deploy $2 $3
+        ;;
+    withdraw)
+        if [ -z $2 ]; then
+            usage
+            exit
+        fi
+        if [ -z $3 ]; then
+            usage
+            exit
+        fi
+
+        withdraw $2 $3
+        ;;
+    history)
+        ls -1 ~/backup/$2
+        ;;
+    *)
+        usage
+        exit 1
+esac
+

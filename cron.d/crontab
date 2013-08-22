@@ -1,0 +1,33 @@
+SHELL=/bin/bash
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+MAILTO=324@68xx.org
+HOME=/
+
+# For details see man 4 crontabs
+
+# Example of job definition:
+# .---------------- minute (0 - 59)
+# |  .------------- hour (0 - 23)
+# |  |  .---------- day of month (1 - 31)
+# |  |  |  .------- month (1 - 12) OR jan,feb,mar,apr ...
+# |  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+# |  |  |  |  |
+# *  *  *  *  * user-name command to be executed
+
+# m h dom mon dow user	command
+#17 *	* * *	root    cd / && run-parts --report /etc/cron.hourly
+#25 6	* * *	root	test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )
+#47 6	* * 7	root	test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.weekly )
+#52 6	1 * *	root	test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.monthly )
+#
+
+# m h  dom mon dow   command
+00 21   * * *   test -x /srv/deploy/script/nightly && ( /srv/deploy/script/nightly )
+#00 21   * * 7   test -x /srv/deploy/script/weekly && ( /srv/deploy/script/weekly )
+#00 21   1 * *   test -x /srv/deploy/script/monthly && ( /srv/deploy/script/monthly )
+
+# m h  dom mon dow   command
+#*/5 * * * * /srv/bin/snapshot
+#*/30 * * * * /srv/bin/backup
+00 12 * * * * /srv/backup/database
+00 20 * * * * /srv/backup/database

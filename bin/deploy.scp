@@ -1,0 +1,91 @@
+#!/bin/bash
+#SCP=root@120.132.144.12:/www
+BACKUP_DIR=~/backup/java
+UPLOAD_DIR=.
+#IP=""
+#FILEDIR=$UPLOAD_DIR/""
+
+deploy(){
+    SCP=root@${IP}:/www
+    TIMEPOINT=$(date '+%Y-%m-%d,%H:%M:%S')
+    BACKUP_DIR=$BACKUP_DIR/$TIMEPOINT
+    mkdir $BACKUP_DIR
+
+    for dir in $(find $FILEDIR -type d | sed -e "s:^$FILEDIR::g");
+    do
+    #    echo $dir
+        mkdir -p $BACKUP_DIR/$dir
+    #    if [ ! -e $i.log ]; then
+    #        mkdir -p $
+    #    fi
+    done
+
+    echo ===== backup timepont $TIMEPOINT =====
+
+    for file in $(find $FILEDIR -type f | sed -e "s:^$FILEDIR::g");
+        do
+    #        echo $file
+            scp $SCP/$file $BACKUP_DIR/$file
+        done
+
+    read -p "Are you ready? [y/n]" -n 1 key
+        echo
+        if [ $key = 'y' ]; then
+            echo ===== upload =====
+
+            eval scp -r "$FILEDIR*" $SCP
+        fi
+}
+withdraw(){
+    host=$1
+    timepoint=$2
+    SCP=root@${host}:/www
+    eval scp -r $BACKUP_DIR/$timepoint/* $SCP
+}
+restart(){
+    /usr/local/resin-pro-3.1.3/bin/httpd.sh -server payservice restart
+}
+
+usage(){
+    echo $"Usage: $0 {deploy|withdraw|history} <server-id> <directory/timepoint>"
+    exit 1
+}
+
+
+case "$1" in
+    deploy)
+        if [ -z $2 ]; then
+            usage
+            exit
+        else
+            export IP=$2
+        fi
+        if [ -z $3 ]; then
+            usage
+            exit
+        else
+            export FILEDIR=$UPLOAD_DIR/$3
+        fi
+
+        deploy
+        ;;
+    withdraw)
+        if [ -z $2 ]; then
+            usage
+            exit
+        fi
+        if [ -z $3 ]; then
+            usage
+            exit
+        fi
+
+        withdraw $2 $3
+        ;;
+    history)
+        ls -1 $BACKUP_DIR
+        ;;
+    *)
+        usage
+        exit 1
+esac
+

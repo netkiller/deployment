@@ -1,0 +1,612 @@
+#!/bin/bash
+#####################################################################
+# Description: Automation Deployment Script 
+#              Netkiller series utilities
+# Author: Neo<openunix@163.com>
+# Homepage: http://netkiller.sourceforge.net/
+# $Id$
+#####################################################################
+
+if [ -z $DEPLOY_HOME ]; then
+	echo 'Example: export DEPLOY_HOME=/srv/deploy'
+	exit
+fi
+if [ -f $DEPLOY_HOME/conf/default.conf ];then
+    . $DEPLOY_HOME/conf/default.conf
+fi
+
+if [ -f $DEPLOY_HOME/conf/stage.conf ];then
+    . $DEPLOY_HOME/conf/stage.conf
+fi
+
+#================================================================================
+
+LOGFILE="deploy.$(date -d "today" +"%Y-%m-%d").log"
+TMPDIR=$(mktemp -d --suffix=.tmp -p /tmp deploy.XXXXXX)
+SVN=/usr/bin/svn
+
+TIMEPOINT=`date '+%Y-%m-%d.%H-%M-%S'`
+BACKUPDIR=/backup/${TIMEPOINT}
+RSYNC="rsync"
+UPLOAD_DIR=$TMPDIR
+REVISION=''
+# development  production  testing
+if [ -z $STAGE ]; then
+    echo 'Example: touch conf/stage.conf'
+    echo "STAGE='development' or STAGE='testing' or STAGE='production'"
+    exit
+fi
+
+SUBVERSION=''
+
+#================================================================================
+
+if [ ! -d ${TMPDIR} ]; then
+    mkdir ${TMPDIR}
+fi
+
+chmod 700 -R ${SRCDIR}/*
+#pkgname=${project}-${version}-${datetime}.pkg
+#tar jcvf ${pkgname} /tmp/${project} --remove-files >> deploy.log
+#####################################################################
+
+function logging(){
+        local logfile="$LOGDIR/$LOGFILE"
+        local timepoint=$(date -d "today" +"%Y-%m-%d_%H:%M:%S")
+        local status=$1
+        local message=$2
+        echo "[$timepoint] [${status}] ${message}" >> $logfile
+}
+#logging 'OK' 'This is test msg!!!'
+
+function conf(){
+    local cmd=$2
+    local prj=$3
+    case $cmd in
+        list)
+            ls -1 $SYSCONFDIR/*
+            ;;
+        new)
+            mkdir -p $SYSCONFDIR	
+	    #if [ ! -d ${BACKUPDIR} ]; then 
+	    #	mkdir -p $BACKUPDIR
+	    #fi
+
+            read -p "Project directory: " prjdir
+            if [ -z $prjdir ]; then
+                exit
+            fi
+            if [ -f $SYSCONFDIR/$prjdir.conf ]; then
+                echo "cannot create config $prjdir.conf': File exists"
+                exit 1
+            fi
+
+            read -p "subversion url: $REPOSITORIES/: " svnurl
+            if [ -z $svnurl ]; then
+                svnurl=$REPOSITORIES
+            fi
+            read -p "hostname: " host
+            if [ -z $host ]; then
+                host="localhost"
+                echo "default hostname 'localhost'"
+            fi
+            read -p "upload mode ftp/scp/sftp/rsync: " mode
+            if [ -z $mode ]; then
+                mode=ftp
+            else
+                case $mode in
+                    ftp)
+                        mode="ftpdeploy"
+                        ;;
+                    scp)
+                        mode="scpdeploy"
+                        ;;
+                    sftp)
+                        mode="sftpdeploy"
+                        ;;
+                    rsync)
+                        mode="rsync"
+                        ;;
+                esac
+            fi
+            read -p "Create $prjdir config? [y/n]" -n 1 key
+            echo
+            if [ $key = 'y' ]; then
+                echo -ne "REPOSITORIES=$REPOSITORIES/$svnurl
+COMMAND=$mode
+HOSTNAME=$host
+                " >> $SYSCONFDIR/$prjdir.conf
+            fi
+            ;;
+        remove)
+            if [ -f $SYSCONFDIR/$prj ]; then
+                rm -rf $SYSCONFDIR/$prj
+            fi
+            ;;
+        show)
+            cat $SYSCONFDIR/$prj
+            ;;
+        edit)
+            vim $SYSCONFDIR/$prj
+            ;;
+        *)
+        usage
+        ;;
+    esac
+
+}
+
+
+#####################################################################
+
+function config {
+    local cfg=$1
+    exclude_from=$PREFIX/exclude/${cfg}.lst
+    include_from=$PREFIX/include/${cfg}.lst
+
+    if [ -f $SYSCONFDIR/${STAGE}/${cfg}.conf ];then
+        . $SYSCONFDIR/${STAGE}/${cfg}.conf 
+    else
+        echo "Please provide the config($SYSCONFDIR/${STAGE}/${cfg}.conf) to deploy!"
+        exit
+    fi
+    if [ -z "$cfg" ]; then
+        echo "Please provide the path for deploy!"
+		exit
+    fi
+
+    if [ ! -f $exclude_from ]; then
+        echo "Please provide a list of excluded in the $exclude_from."
+	touch $exclude_from
+        exit
+    fi
+    if [ ! -f $include_from ]; then
+        echo "Please provide a list of included in the $include_from."
+	touch $include_from
+        exit
+    fi
+
+#    case ${STAGE} in
+#        development)
+#            SUBVERSION='development'
+#            ;;
+#        testing)
+#            SUBVERSION=''
+#            ;;
+#        production)
+#            ;;
+#        *)
+#            SUBVERSION='current'
+#            ;;
+#    esac
+
+}
+
+function deploy() {
+
+    local domain=$2
+	local host=$3
+	local logfile=${LOGDIR}/${host}.${domain}.log
+
+    if [ $# -lt 3 ]; then
+        usage
+    fi
+
+    if [ $host = 'all' ]; then
+	for h in $(ls -1 $SYSCONFDIR/${STAGE}/$domain/ | cut -d. -f1)
+	do
+	    /bin/sh $BINDIR/deploy deploy $domain $h
+
+	done
+	exit
+    fi
+
+    local revision=$4
+        
+    if [ ! -z $revision  ]; then
+        REVISION="-r ${revision}"
+    fi
+
+
+    config ${domain}/${host}
+
+	project=$SRCDIR/${STAGE}/${domain}/$host.${domain}
+ 
+	SVN_OPTS=${REVISION}	
+	if [ -d ${project} ]; then 
+	    $SVN update ${SVN_OPTS} $project >> $logfile
+		logging 'update' ${project}
+	else
+	    mkdir -p ${project}
+		$SVN checkout ${REPOSITORY} ${project} >> $logfile
+		logging 'checkout' ${project} 
+	fi
+	
+#    $BINDIR/$COMMAND deploy $HOSTNAME $UPLOAD_DIR/$ver/	
+
+	RSYNC_OPTS=" -azvP --backup --backup-dir=${BACKUPDIR} --exclude=.svn --log-file=${logfile} --exclude-from=$exclude_from --include-from=$include_from"
+
+	if [ -f ${LIBEXECDIR}/${domain}/${host}/before ];then
+		/bin/sh ${LIBEXECDIR}/${domain}/${host}/before
+	fi
+	if [ -d ${SHAREDIR}/${STAGE}/${domain}/${host}/ ]; then
+		cp -a ${SHAREDIR}/${STAGE}/${domain}/${host}/* ${project}/
+	fi
+
+    find $SRCDIR/* -type f -name "Thumbs.db" -exec rm -rf {} \;
+
+	for addr in ${REMOTE} 
+	do
+
+    		echo ${addr}
+
+		case ${MODE} in
+		    FTP)
+			ftpdeploy
+			;;
+                    SCP)
+                        scp -ar ${project}/* ${addr}:${DESTINATION}
+                        ;;
+                    SFTP)
+                        sftpdeploy
+                        ;;
+                    RSYNC)
+                        $RSYNC $RSYNC_OPTS $OPTION ${project}/* ${addr}::${DESTINATION}
+                        #echo "$RSYNC $RSYNC_OPTS $OPTION ${project}/* ${addr}::${DESTINATION}"
+                        ;;
+                    "RSYNC+SSH")
+                        $RSYNC $RSYNC_OPTS ${project}/* ${addr}:${DESTINATION}
+                        ;;
+                esac
+		if [ -z "${REVISION}" ]; then
+			logging 'deploy' "${project} => ${addr}:${DESTINATION}"
+		else
+			logging 'revert' "${project} => ${addr}:${DESTINATION}"
+		fi
+	done
+		
+        if [ -f ${LIBEXECDIR}/${domain}/${host}/after ];then
+		#ssh ${scp} < ${LIBEXECDIR}/${domain}/${host}/after
+		exit
+	fi
+	
+}
+
+function revert() {
+
+	local domain=$2
+	local host=$3
+    local revision=$4
+	
+    if [ -z $domain ]; then
+        usage
+    fi
+	
+    if [ -z $host ]; then
+        usage
+    fi
+	
+    if [ -z $revision  ]; then
+        usage
+    else
+	REVISION="-r ${revision}"
+    fi
+	#echo $domain , $host, $dir; exit
+
+	
+	deploy $@
+}
+
+function import(){
+    local domain=$2
+	local host=$3
+    local dir=$4
+	
+    if [ -z $domain ]; then
+        usage
+    fi
+	
+    if [ -z $host ]; then
+        usage
+    fi
+	
+    if [ -z $dir ]; then
+        usage
+    fi
+	
+	config ${domain}/${host}
+
+    $SVN import $dir ${REPOSITORY} >> $logfile
+}
+function svnexport(){
+
+    local domain=$2
+	local host=$3
+    local dir=$4
+	
+    if [ -z $domain ]; then
+        usage
+    fi
+	
+    if [ -z $host ]; then
+        usage
+    fi
+	
+    if [ -z $dir ]; then
+        usage
+    fi
+	
+	config ${domain}/${host}
+	
+	local logfile=${LOGDIR}/${host}.${domain}.log
+	
+    $SVN export --force ${REPOSITORY} ${dir} >> $logfile
+	
+	logging 'export' "${TRUNK} to ${dir}"
+}
+
+
+function timepoint {
+    echo $TIMEPOINT >> timepoint.log
+}
+
+function unstable {
+    local edition=$(basename $unstable)
+    svn export ${unstable} ${src}/$edition
+
+    for ignore in $( cat excluded.lst ); do
+        rm -rf ${src}/$edition/$ignore
+    done
+
+    $RSYNC ${src}/$edition ${destination}
+
+    ssh ${remote} < script/unstable
+}
+
+function clean() {
+    local domain=$2
+        local host=$3
+    if [ -z $domain ]; then
+        usage
+    fi
+
+    if [ -z $host ]; then
+        usage
+    fi
+
+    local project=$SRCDIR/${domain}/$host.${domain}
+
+    rm -rf ${project}
+}
+
+function list {
+    local domain=$2
+    local host=$3
+    local dir=$4
+    if [ -z $domain ]; then
+        ls $SRCDIR/*
+	exit
+    fi
+
+    if [ -z $host ]; then
+        usage
+    fi
+
+    config ${domain}/${host}
+
+    svn ls ${REPOSITORIES}/$dir #| awk -F '/' '{print $1}'
+
+}
+
+function backup() {
+    local domain=$2
+    local host=$3
+    local dir=$4
+
+    if [ -z $domain ]; then
+	usage
+    fi
+
+    if [ -z $host ]; then
+        usage
+    fi
+
+    local logfile=${LOGDIR}/${host}.${domain}.log
+
+    config ${domain}/${host}
+
+    if [ -z $dir ]; then
+        dir=$TMPDIR
+    fi
+
+    for addr in ${REMOTE}
+    do
+	dir=$dir/${addr}
+        if [ ! -d ${dir} ]; then
+    	    mkdir -p $dir
+        fi
+
+        $RSYNC -auzvP $OPTION ${addr}::${DESTINATION} $dir >> ${logfile}
+
+	logging 'backup' "rsync://${addr}::${DESTINATION} to ${dir}"
+
+        echo 'Backup Directory:' $dir
+	exit
+    done
+
+}
+function cron(){
+    local fun=$2	
+    case ${fun} in
+        show)
+            crontab -l
+            ;;
+        setup)
+            cat $PREFIX/cron.d/crontab | crontab
+            ;;
+        edit)
+            vim $PREFIX/cron.d/crontab
+            cat $PREFIX/cron.d/crontab | crontab
+            ;;
+        *)
+            usage
+            ;;
+    esac
+
+}
+
+function files {
+    local project_dir=$1
+    local project=$2
+    if [ -z "$2"  ]; then
+        echo "Please provide the project name for deploy!"
+    else
+        config ${project}
+        exclude_from=exclude/${project}.lst
+        include_from=include/${project}.lst
+        $RSYNC --exclude-from=$exclude_from --include-from=$include_from ${project_dir} ${remote}
+        ssh ${scp} < script/${project} 
+        timepoint
+    fi
+}
+
+function release() {
+
+    local domain=$2
+    local host=$3
+    local ver=$4
+    local message=$5
+
+    if [ $# -lt 4 ]; then
+        usage
+    fi
+
+#    if [ -z $host ]; then
+#        usage
+#    fi
+#
+    if [ -z $message ]; then
+	echo -n "Message: "
+        read message
+    fi
+
+    config ${domain}/${host}
+
+    local logfile=${LOGDIR}/${host}.${domain}.log
+
+    $SVN copy -m "$message"  ${TRUNK} ${TAGS}/${ver} >> $logfile
+
+    logging 'release' "copy ${TRUNK} to ${TAGS}/${ver}"
+
+}
+
+function stage(){
+    case $1 in
+        development)
+            STAGE='development'
+            ;;
+        testing)
+            STAGE='testing'
+            ;;
+        production)
+            STAGE='production'
+            ;;
+        *)
+	    echo "STAGE ERROR"
+	    exit
+            ;;
+    esac
+    echo $"STAGE=$STAGE" > $SYSCONFDIR/stage.conf && echo $STAGE
+    logging 'stage' "${STAGE}"
+}
+
+function usage(){
+echo $"Usage: $0 [OPTION] <server-id> <directory/timepoint>"
+echo -ne "
+OPTION:
+	stage {development|testing|production}
+        deploy <domain> <host>
+        revert <domain> <host> <revision>
+        backup <domain> <host> <directory>
+	release <domain> <host> <tags> <message>
+
+        list
+        list <domain> <host>
+
+        import <domain> <host> <dir>
+        export <domain> <host> <dir>
+	
+	clean <domain> <host>   
+	log <project> <line>
+
+        conf list
+        conf new <project>
+        conf remove <project>
+        conf show <project>
+        conf edit <project>	   
+
+	cron show
+	cron setup
+	cron edit
+"
+
+    exit
+}
+
+case "$1" in
+    stage)
+	stage $2
+	;;
+    development)
+        STAGE='development'
+	deploy $@
+        ;;
+    testing)
+	STAGE='testing'
+	deploy $@
+        ;;
+    production)
+        STAGE='production'
+	deploy $@
+        ;;
+    deploy)
+        deploy $@
+        ;;
+    revert)
+        revert $@
+        ;;		
+    import)
+        import $@
+        ;;
+    export)
+        svnexport $@
+        ;;	
+    backup)
+        backup $@
+        ;;
+#    switch)
+#	    switch $2
+#        ;;
+    cron)
+        cron $@
+        ;;		
+    release)
+        release $@
+        ;;
+    clean)
+        clean $@
+        ;;
+    list)
+        list $@
+        ;;
+    log)
+        ls -1 $LOGDIR/*
+        ;;
+    conf)
+        conf $@
+        ;;		
+    *)
+        usage
+        exit 1
+        
+esac
