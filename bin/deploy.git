@@ -42,6 +42,7 @@ if [ -z $STAGE ]; then
     echo "STAGE='development' or STAGE='testing' or STAGE='production'"
     exit
 fi
+READ_TIMEOUT=60
 #================================================================================
 
 if [ ! -d ${TMPDIR} ]; then
@@ -198,7 +199,7 @@ function deploy() {
 	fi
 
 	if [ ${STAGE} = 'production' ]; then
-		read -p "Are you sure you want to continue deploying? [y/n]" -n 1 key
+		read -t "$READ_TIMEOUT" -p "Are you sure you want to continue deploying? [y/n]" -n 1 key
 		echo
 		if [ $key != 'y' ]; then
 			exit
