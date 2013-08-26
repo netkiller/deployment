@@ -8,3 +8,7 @@ https://github.com/oscm/deployment/blob/master/README.md
 Git Manual
 ----------
 https://github.com/oscm/deployment/blob/master/man/git.md
+
+SVN Manual
+----------
+https://github.com/oscm/deployment/blob/master/man/svn.md
