@@ -281,8 +281,8 @@ function deploy() {
 				sftpdeploy
 				;;
 			RSYNC)
-				$RSYNC $RSYNC_OPTS $OPTION ${project}/* ${addr}::${DESTINATION}
-				debug 'rsync' "$RSYNC $RSYNC_OPTS $OPTION ${project}/* ${addr}::${DESTINATION}"
+				$RSYNC $RSYNC_OPTS $OPTION ${project} ${addr}::${DESTINATION}
+				debug 'rsync' "$RSYNC $RSYNC_OPTS $OPTION ${project} ${addr}::${DESTINATION}"
 				;;
 			"RSYNC+SSH")
 				$RSYNC $RSYNC_OPTS ${project}/* ${addr}:${DESTINATION}
