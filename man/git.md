@@ -5,9 +5,9 @@ Deployment GIT
 
 Installation
 ------------
-https://github.com/netkiller/deployment.git
+https://github.com/oscm/deployment.git
 
-	$ git clone https://github.com/netkiller/deployment.git
+	$ git clone https://github.com/oscm/deployment.git
 	$ chmod 755 -R deployment
 	$ export DEPLOY_HOME=~/deployment
   	
