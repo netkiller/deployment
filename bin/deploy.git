@@ -480,10 +480,10 @@ function branch(){
     if [ -z $branchname ]; then
         git branch
     else
-	
 	git reset HEAD --hard
 	git pull
 	# git version 1.7.1
+  #git checkout -fb $branchname origin/$branchname || { git checkout -f $branchname; git pull; }  
         #git checkout $branchname
 
 	# git version 1.7.11
